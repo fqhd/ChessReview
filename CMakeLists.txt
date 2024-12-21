@@ -13,5 +13,15 @@ set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 # Collect all source files in the src directory
 file(GLOB_RECURSE SRC_FILES "${SRC_DIR}/*.cpp" "${SRC_DIR}/*.c")
 
+# Add the SFML submodule
+set(SFML_DIR ${CMAKE_SOURCE_DIR}/external/SFML)
+add_subdirectory(${SFML_DIR})
+
 # Add the executable
 add_executable(ChessReview ${SRC_FILES})
+
+# Include SFML headers
+target_include_directories(ChessReview PRIVATE ${SFML_DIR}/include)
+
+# Link SFML libraries
+target_link_libraries(ChessReview PRIVATE sfml-graphics sfml-window sfml-system)
