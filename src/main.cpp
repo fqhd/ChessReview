@@ -233,8 +233,44 @@ void drawBoard(sf::RenderWindow& window) {
     }
 }
 
-void drawPieces() {
+sf::IntRect getTextureRect(sf::Texture* piecesTexture, int i, int j) {
+    int pieceWidth = piecesTexture->getSize().x / 6;
+    int pieceHeight = piecesTexture->getSize().y / 2;
+    return sf::IntRect(sf::Vector2i(j * pieceWidth, i * pieceHeight), sf::Vector2i(pieceWidth, pieceHeight));
+}
 
+void drawPieces(sf::RenderWindow& window, const Board& board, sf::Texture* piecesTexture) {
+    sf::RectangleShape rect;
+    rect.setTexture(piecesTexture);
+    for(int i = 0; i < 8; i++) {
+        for(int j = 0; j < 8; j++) {
+            Square square((7 - i) * 8 + j);
+            Piece p = board.at(square);
+            if(p == Piece::NONE){
+                continue;
+            }
+            rect.setPosition(sf::Vector2f(j * SQUARE_SIZE, i * SQUARE_SIZE));
+            rect.setSize(sf::Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+            int yCoord = 0;
+            int xCoord = 0;
+            if(p.type() == PieceType::PAWN) {
+                xCoord = 5;
+            } else if(p.type() == PieceType::BISHOP) {
+                xCoord = 2;
+            } else if(p.type() == PieceType::KNIGHT) {
+                xCoord = 3;
+            } else if(p.type() == PieceType::ROOK) {
+                xCoord = 4;
+            } else if(p.type() == PieceType::QUEEN) {
+                xCoord = 1;
+            }
+            if(p.color() == Color::BLACK) {
+                yCoord = 1;
+            }
+            rect.setTextureRect(getTextureRect(piecesTexture, yCoord, xCoord));
+            window.draw(rect);
+        }
+    }
 }
 
 int main()
@@ -285,16 +321,48 @@ int main()
     sf::RenderWindow window(sf::VideoMode({800, 800}), "ChessReview");
     window.setFramerateLimit(60);
 
+    sf::Texture piecesTexture;
+    if(!piecesTexture.loadFromFile("pieces.png")){
+        std::cerr << "Failed to load pieces texture" << std::endl;
+        return -1;
+    }
+    piecesTexture.setSmooth(true);
+    if(!piecesTexture.generateMipmap()){
+        std::cout << "Warning: could not generate mipmap texture, render quality may suffer";
+    }
+    
+
+    Board board;
+    std::vector<Move> moveHistory;
+    Classification currentClassification;
+
     while (window.isOpen())
     {
         while (const std::optional event = window.pollEvent())
         {
-            if (event->is<sf::Event::Closed>())
+            if (event->is<sf::Event::Closed>()) {
                 window.close();
+            } else if (event->is<sf::Event::KeyPressed>()) {
+                auto keyEvent = event->getIf<sf::Event::KeyPressed>();
+                if(keyEvent->code == sf::Keyboard::Key::Right) {
+                    if(moveHistory.size() < classifiedMoves.size()){
+                        Move move = uci::parseSan(board, classifiedMoves[moveHistory.size()].move);
+                        board.makeMove(move);
+                        moveHistory.push_back(move);
+                        currentClassification = classifiedMoves[moveHistory.size()].cl;
+                    }
+                }else if(keyEvent->code == sf::Keyboard::Key::Left) {
+                    if(moveHistory.size() > 0) {
+                        board.unmakeMove(moveHistory.back());
+                        moveHistory.pop_back();
+                    }
+                }
+            }
         }
 
         window.clear();
         drawBoard(window);
+        drawPieces(window, board, &piecesTexture);
         window.display();
     }
 }
