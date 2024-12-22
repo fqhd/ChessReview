@@ -5,8 +5,10 @@
 #include <asio.hpp>
 #include <asio/ssl.hpp>
 #include "bot.hpp"
+#include <unordered_set>
 
 const int SEARCH_DEPTH = 3;
+const int SQUARE_SIZE = 100;
 
 std::string getUsername() {
     std::string username;
@@ -105,6 +107,17 @@ std::string getPGN(std::string game) {
     return "";
 }
 
+bool isWhite(std::string game, std::string username) {
+    std::string targetString = "[White \"" + username + "\"]";
+    std::vector<std::string> lines = split(game, '\n');
+    for(int i = 0; i < lines.size(); i++) {
+        if(lines[i] == targetString) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<std::string> parsePGN(const std::string& pgn) {
     std::vector<std::string> moves;
     std::stringstream ss(pgn);
@@ -129,6 +142,100 @@ struct EvaluatedMove {
     std::string move;
     int evaluation;
 };
+
+enum Classification {
+    None,
+    Book, // Brown
+    Good, // Green
+    Miss, // Yellow Question Mark
+    Mistake, // Orange Question & Exclamation Markk
+    Blunder, // Red Double Question Mark
+    Brilliant // Turquoise Double Exclamation mark
+};
+
+struct ClassifiedMove {
+    std::string move;
+    Classification cl;
+};
+
+bool isBookMove(Board board, std::string move, const std::unordered_set<std::string>& book) {
+    board.makeMove(uci::parseSan(board, move));
+    if(book.find(board.getFen()) != book.end()) {
+        return true;
+    }else{
+        return false;
+    }
+}
+
+void evaluateAllMoves(const std::vector<std::string>& moves, std::vector<EvaluatedMove>& evaluatedMoves) {
+    Board board;
+    for(int i = 0; i < moves.size(); i++) {
+        EvaluatedMove move;
+        move.move = moves[i];
+        
+        Move boardMove = uci::parseSan(board, move.move);
+        board.makeMove(boardMove);
+        move.evaluation = search(board, SEARCH_DEPTH, 0, -KING_VALUE, KING_VALUE);
+
+        evaluatedMoves.push_back(move);
+    }
+}
+
+void loadOpeningBook(std::unordered_set<std::string>& book) {
+    std::ifstream is("opening_book.txt");
+    if(is.fail()) {
+        std::cerr << "Failed to load opening book" << std::endl;
+    }
+    std::string fen;
+    while (std::getline(is, fen)) {
+        book.insert(fen);
+    }
+    is.close();
+}
+
+void classifyMoves(const std::vector<EvaluatedMove>& evaluatedMoves, const std::unordered_set<std::string>& book, std::vector<ClassifiedMove>& classifiedMoves, bool white) {
+    Board board;
+    for(int i = 0; i < evaluatedMoves.size(); i++) {
+        ClassifiedMove move;
+        move.move = evaluatedMoves[i].move;
+
+        if(i % 2 == white) {
+            // Dont classify
+            move.cl = None;
+        }else{
+            // Classify
+            if(isBookMove(board, evaluatedMoves[i].move, book)) {
+                move.cl = Book;
+            }else{
+                move.cl = Good;
+            }
+        }
+
+
+        classifiedMoves.push_back(move);
+        board.makeMove(uci::parseSan(board, evaluatedMoves[i].move));
+    }
+}
+
+void drawBoard(sf::RenderWindow& window) {
+    for(int i = 0; i < 8; i++) {
+        for(int j = 0; j < 8; j++) {
+            sf::RectangleShape rect;
+            rect.setPosition(sf::Vector2f(j * SQUARE_SIZE, i * SQUARE_SIZE));
+            rect.setSize(sf::Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+            if((i + j) % 2 == 0){
+                rect.setFillColor(sf::Color(240, 217, 181));
+            } else {
+                rect.setFillColor(sf::Color(181, 136, 99));
+            }
+            window.draw(rect);
+        }
+    }
+}
+
+void drawPieces() {
+
+}
 
 int main()
 {
@@ -160,33 +267,23 @@ int main()
         "Nc3"
     };
 
+    bool white = true;
+
     // Evaluate every move
-    Board board;
     std::vector<EvaluatedMove> evaluatedMoves;
-    for(int i = 0; i < moves.size(); i++) {
-        EvaluatedMove move;
-        move.move = moves[i];
-        
-        Move boardMove = uci::parseSan(board, move.move);
-        board.makeMove(boardMove);
-        move.evaluation = search(board, SEARCH_DEPTH, 0, -KING_VALUE, KING_VALUE);
+    evaluateAllMoves(moves, evaluatedMoves);
 
-        evaluatedMoves.push_back(move);
-    }
-
-    for(int i = 0; i < evaluatedMoves.size(); i++) {
-        std::cout << evaluatedMoves[i].move << ": " << evaluatedMoves[i].evaluation << std::endl;
-    }
+    // Load opening book
+    std::unordered_set<std::string> book;
+    loadOpeningBook(book);
 
     // Classify every other move based on whether we are playing black or white
-
-    // Classify moves(Book, Miss, Inaccuracy, Blunder, Brilliant)
+    std::vector<ClassifiedMove> classifiedMoves;
+    classifyMoves(evaluatedMoves, book, classifiedMoves, white);
 
     // Create window and start loop
-
-    sf::RenderWindow window(sf::VideoMode({200, 200}), "SFML works!");
-    sf::CircleShape shape(100.f);
-    shape.setFillColor(sf::Color::Green);
+    sf::RenderWindow window(sf::VideoMode({800, 800}), "ChessReview");
+    window.setFramerateLimit(60);
 
     while (window.isOpen())
     {
@@ -197,7 +294,7 @@ int main()
         }
 
         window.clear();
-        window.draw(shape);
+        drawBoard(window);
         window.display();
     }
 }
