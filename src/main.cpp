@@ -4,6 +4,9 @@
 #include <fstream>
 #include <asio.hpp>
 #include <asio/ssl.hpp>
+#include "bot.hpp"
+
+const int SEARCH_DEPTH = 3;
 
 std::string getUsername() {
     std::string username;
@@ -158,6 +161,22 @@ int main()
     };
 
     // Evaluate every move
+    Board board;
+    std::vector<EvaluatedMove> evaluatedMoves;
+    for(int i = 0; i < moves.size(); i++) {
+        EvaluatedMove move;
+        move.move = moves[i];
+        
+        Move boardMove = uci::parseSan(board, move.move);
+        board.makeMove(boardMove);
+        move.evaluation = search(board, SEARCH_DEPTH, 0, -KING_VALUE, KING_VALUE);
+
+        evaluatedMoves.push_back(move);
+    }
+
+    for(int i = 0; i < evaluatedMoves.size(); i++) {
+        std::cout << evaluatedMoves[i].move << ": " << evaluatedMoves[i].evaluation << std::endl;
+    }
 
     // Classify every other move based on whether we are playing black or white
 

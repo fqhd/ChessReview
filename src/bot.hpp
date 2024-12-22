@@ -10,6 +10,6 @@ const int KNIGHT_VALUE = 3;
 const int BISHOP_VALUE = 3;
 const int ROOK_VALUE = 5;
 const int QUEEN_VALUE = 9;
-const int KING_VALUE = INT_MAX;
+const int KING_VALUE = 1000;
 
-int evaluate(const Board& board);
+int search(Board board, int depth, int ply, int alpha, int beta);

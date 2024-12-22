@@ -133,7 +133,7 @@ int captureSearch(Board board, int alpha, int beta, int ply) {
 
 int search(Board board, int depth, int ply, int alpha, int beta) {
 	if (depth == 0) {
-		return evaluate(board);
+		return captureSearch(board, alpha, beta, ply);
 	}
 
 	Movelist moves;
