@@ -148,9 +148,9 @@ enum Classification {
     Book, // Brown
     Good, // Green
     Miss, // Yellow Question Mark
-    Mistake, // Orange Question & Exclamation Markk
+    Mistake, // Orange Question & Exclamation Mark
     Blunder, // Red Double Question Mark
-    Brilliant // Turquoise Double Exclamation mark
+    Brilliant // Turquoise Double Exclamation Mark
 };
 
 struct ClassifiedMove {
@@ -273,6 +273,38 @@ void drawPieces(sf::RenderWindow& window, const Board& board, sf::Texture* piece
     }
 }
 
+void drawSquare(sf::RenderWindow& window, Square square) {
+    sf::RectangleShape rect;
+    int x = square.file();
+    int y = 7 - square.rank();
+    rect.setPosition(sf::Vector2f(x * SQUARE_SIZE, y * SQUARE_SIZE));
+    rect.setSize(sf::Vector2f(SQUARE_SIZE, SQUARE_SIZE));
+    rect.setFillColor(sf::Color(245, 245, 130, 200));
+    window.draw(rect);
+}
+
+sf::Texture* loadIcon(std::string iconName) {
+    sf::Texture* texture = new sf::Texture();
+    if(!texture->loadFromFile(std::string("icons/" + iconName + ".png"))){
+        std::cerr << "Failed to load " << iconName << " icon" << std::endl;
+        return nullptr;
+    }
+    return texture;
+}
+
+void drawIcon(sf::RenderWindow& window, Square square, Classification cl, sf::Texture* icons[]) {
+    sf::RectangleShape rect;
+    int x = square.file() + 1;
+    int y = 7 - square.rank();
+    float xPos = x * SQUARE_SIZE;
+    float yPos = y * SQUARE_SIZE;
+    rect.setOrigin(sf::Vector2f(16, 16));
+    rect.setPosition(sf::Vector2f(xPos, yPos));
+    rect.setSize(sf::Vector2f(32, 32));
+    rect.setTexture(icons[cl-1]);
+    window.draw(rect);
+}
+
 int main()
 {
 
@@ -330,17 +362,29 @@ int main()
     if(!piecesTexture.generateMipmap()){
         std::cout << "Warning: could not generate mipmap texture, render quality may suffer";
     }
-    
+
+    sf::Texture* icons[6];
+    icons[0] = loadIcon("book");
+    icons[1] = loadIcon("good");
+    icons[2] = loadIcon("miss");
+    icons[3] = loadIcon("mistake");
+    icons[4] = loadIcon("blunder");
+    icons[5] = loadIcon("brilliant");
 
     Board board;
     std::vector<Move> moveHistory;
-    Classification currentClassification;
 
     while (window.isOpen())
     {
         while (const std::optional event = window.pollEvent())
         {
             if (event->is<sf::Event::Closed>()) {
+                delete icons[0];
+                delete icons[1];
+                delete icons[2];
+                delete icons[3];
+                delete icons[4];
+                delete icons[5];
                 window.close();
             } else if (event->is<sf::Event::KeyPressed>()) {
                 auto keyEvent = event->getIf<sf::Event::KeyPressed>();
@@ -349,7 +393,6 @@ int main()
                         Move move = uci::parseSan(board, classifiedMoves[moveHistory.size()].move);
                         board.makeMove(move);
                         moveHistory.push_back(move);
-                        currentClassification = classifiedMoves[moveHistory.size()].cl;
                     }
                 }else if(keyEvent->code == sf::Keyboard::Key::Left) {
                     if(moveHistory.size() > 0) {
@@ -362,6 +405,15 @@ int main()
 
         window.clear();
         drawBoard(window);
+
+        if(moveHistory.size() > 0) {
+            drawSquare(window, moveHistory.back().from());
+            drawSquare(window, moveHistory.back().to());
+            if(classifiedMoves[moveHistory.size()-1].cl != None) {
+                drawIcon(window, moveHistory.back().to(), classifiedMoves[moveHistory.size()-1].cl, icons);
+            }
+        }
+
         drawPieces(window, board, &piecesTexture);
         window.display();
     }
