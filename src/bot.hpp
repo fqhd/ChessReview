@@ -13,3 +13,5 @@ const int QUEEN_VALUE = 9;
 const int KING_VALUE = 1000;
 
 int search(Board board, int depth, int ply, int alpha, int beta);
+int getPieceValue(PieceType type);
+Move findBestMove(Board board, int searchDepth);

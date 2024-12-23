@@ -167,15 +167,78 @@ bool isBookMove(Board board, std::string move, const std::unordered_set<std::str
     }
 }
 
-void evaluateAllMoves(const std::vector<std::string>& moves, std::vector<EvaluatedMove>& evaluatedMoves) {
+bool isMiss(Board board, int moveIndex, const std::vector<EvaluatedMove>& evaluatedMoves) {
+    if(moveIndex < 2) {
+        return false;
+    }
+
+    int eval = evaluatedMoves[moveIndex].evaluation;
+    int pEval = evaluatedMoves[moveIndex - 1].evaluation;
+    int ppEval = evaluatedMoves[moveIndex - 2].evaluation;
+
+    if(ppEval < pEval && (eval < pEval && eval >= ppEval)) {
+        return true;
+    }
+
+    return false;
+}
+
+bool isMistake(Board board, int moveIndex, const std::vector<EvaluatedMove>& evaluatedMoves) {
+    if(moveIndex < 1) {
+        return false;
+    }
+
+    int pEval = evaluatedMoves[moveIndex - 1].evaluation;
+    int eval = evaluatedMoves[moveIndex].evaluation;
+
+    if (eval - pEval == -1) {
+        return true;
+    }
+    return false;
+}
+
+bool isBlunder(Board board, int moveIndex, const std::vector<EvaluatedMove>& evaluatedMoves) {
+    if(moveIndex < 1) {
+        return false;
+    }
+
+    int pEval = evaluatedMoves[moveIndex - 1].evaluation;
+    int eval = evaluatedMoves[moveIndex].evaluation;
+
+    if (eval - pEval < -1) {
+        return true;
+    }
+    return false;
+}
+
+bool isBrilliant(Board board, int moveIndex, const std::vector<EvaluatedMove>& evaluatedMoves) {
+    Move move = uci::parseSan(board, evaluatedMoves[moveIndex].move);
+
+    int pEval = evaluatedMoves[moveIndex - 1].evaluation;
+    int eval = evaluatedMoves[moveIndex].evaluation;
+
+    if(board.isAttacked(move.to(), ~board.sideToMove()) && !board.isAttacked(move.to(), board.sideToMove()) && getPieceValue(board.at(move.from()).type()) > getPieceValue(board.at(move.to()).type()) && eval >= pEval) {
+        return true;
+    }
+    return false;
+}
+
+void evaluateAllMoves(const std::vector<std::string>& moves, std::vector<EvaluatedMove>& evaluatedMoves, std::vector<Move>& bestMoves, bool white) {
     Board board;
     for(int i = 0; i < moves.size(); i++) {
         EvaluatedMove move;
         move.move = moves[i];
         
         Move boardMove = uci::parseSan(board, move.move);
+        Move bestMove = findBestMove(board, SEARCH_DEPTH);
+        bestMoves.push_back(bestMove);
         board.makeMove(boardMove);
-        move.evaluation = search(board, SEARCH_DEPTH, 0, -KING_VALUE, KING_VALUE);
+        int eval = search(board, SEARCH_DEPTH, 0, -KING_VALUE, KING_VALUE);
+        if(i % 2 != white) {
+            eval = -eval;
+        }
+        move.evaluation = eval;
+
 
         evaluatedMoves.push_back(move);
     }
@@ -206,6 +269,14 @@ void classifyMoves(const std::vector<EvaluatedMove>& evaluatedMoves, const std::
             // Classify
             if(isBookMove(board, evaluatedMoves[i].move, book)) {
                 move.cl = Book;
+            }else if(isMiss(board, i, evaluatedMoves)) {
+                move.cl = Miss;
+            }else if(isMistake(board, i, evaluatedMoves)) {
+                move.cl = Mistake;
+            }else if(isBlunder(board, i, evaluatedMoves)) {
+                move.cl = Blunder;
+            }else if(isBrilliant(board, i, evaluatedMoves)) {
+                move.cl = Brilliant;
             }else{
                 move.cl = Good;
             }
@@ -239,7 +310,7 @@ sf::IntRect getTextureRect(sf::Texture* piecesTexture, int i, int j) {
     return sf::IntRect(sf::Vector2i(j * pieceWidth, i * pieceHeight), sf::Vector2i(pieceWidth, pieceHeight));
 }
 
-void drawPieces(sf::RenderWindow& window, const Board& board, sf::Texture* piecesTexture) {
+void drawPieces(sf::RenderWindow& window, const Board& board, sf::Texture* piecesTexture, bool white) {
     sf::RectangleShape rect;
     rect.setTexture(piecesTexture);
     for(int i = 0; i < 8; i++) {
@@ -249,7 +320,11 @@ void drawPieces(sf::RenderWindow& window, const Board& board, sf::Texture* piece
             if(p == Piece::NONE){
                 continue;
             }
-            rect.setPosition(sf::Vector2f(j * SQUARE_SIZE, i * SQUARE_SIZE));
+            if(white) {
+                rect.setPosition(sf::Vector2f(j * SQUARE_SIZE, i * SQUARE_SIZE));
+            }else{
+                rect.setPosition(sf::Vector2f((7 - j) * SQUARE_SIZE, (7 - i) * SQUARE_SIZE));
+            }
             rect.setSize(sf::Vector2f(SQUARE_SIZE, SQUARE_SIZE));
             int yCoord = 0;
             int xCoord = 0;
@@ -273,13 +348,17 @@ void drawPieces(sf::RenderWindow& window, const Board& board, sf::Texture* piece
     }
 }
 
-void drawSquare(sf::RenderWindow& window, Square square) {
+void drawSquare(sf::RenderWindow& window, Square square, sf::Color color, bool white) {
     sf::RectangleShape rect;
     int x = square.file();
     int y = 7 - square.rank();
-    rect.setPosition(sf::Vector2f(x * SQUARE_SIZE, y * SQUARE_SIZE));
+    if(white) {
+        rect.setPosition(sf::Vector2f(x * SQUARE_SIZE, y * SQUARE_SIZE));
+    }else{
+        rect.setPosition(sf::Vector2f((7 - x) * SQUARE_SIZE, (7 - y) * SQUARE_SIZE));
+    }
     rect.setSize(sf::Vector2f(SQUARE_SIZE, SQUARE_SIZE));
-    rect.setFillColor(sf::Color(245, 245, 130, 200));
+    rect.setFillColor(color);
     window.draw(rect);
 }
 
@@ -292,12 +371,33 @@ sf::Texture* loadIcon(std::string iconName) {
     return texture;
 }
 
-void drawIcon(sf::RenderWindow& window, Square square, Classification cl, sf::Texture* icons[]) {
+void drawIcon(sf::RenderWindow& window, Square square, Classification cl, sf::Texture* icons[], bool white) {
     sf::RectangleShape rect;
-    int x = square.file() + 1;
+    int x = square.file();
     int y = 7 - square.rank();
-    float xPos = x * SQUARE_SIZE;
+    if(!white) {
+        x = 7 - x;
+        y = 7 - y;
+    }
+    float xPos = (x + 1) * SQUARE_SIZE;
     float yPos = y * SQUARE_SIZE;
+    if(white){
+        if(square.file() == File::FILE_H) {
+            xPos -= 16;
+        }
+        if(square.rank() == Rank::RANK_8) {
+            yPos += 16;
+        }
+    }else{
+        if(square.file() == File::FILE_A) {
+            xPos -= 16;
+        }
+        if(square.rank() == Rank::RANK_1) {
+            yPos += 16;
+        }
+    }
+    
+
     rect.setOrigin(sf::Vector2f(16, 16));
     rect.setPosition(sf::Vector2f(xPos, yPos));
     rect.setSize(sf::Vector2f(32, 32));
@@ -307,39 +407,28 @@ void drawIcon(sf::RenderWindow& window, Square square, Classification cl, sf::Te
 
 int main()
 {
+    std::string username = getUsername();
 
-    // Get username
-    // std::string username = getUsername();
+    std::string game = request("lichess.org", "443", "/api/games/user/" + username + "?max=1&opening=false");
+    if (game == "") {
+        std::cerr << "Failed to retrieve game" << std::endl;
+        return -1;
+    }
 
-    // std::string game = request("lichess.org", "443", "/api/games/user/" + username + "?max=1&opening=false");
-    // if (game == "") {
-    //     std::cerr << "Failed to retrieve game" << std::endl;
-    //     return -1;
-    // }
+    std::string pgn = getPGN(game);
+    if (pgn == "") {
+        std::cerr << "Failed to parse game data" << std::endl;
+        return -1;
+    }
 
-    // std::string pgn = getPGN(game);
-    // if (pgn == "") {
-    //     std::cerr << "Failed to parse game data" << std::endl;
-    //     return -1;
-    // }
+    std::vector<std::string> moves = parsePGN(pgn);
 
-    // std::vector<std::string> moves = parsePGN(pgn);
-
-    std::vector<std::string> moves = {
-        "e4",
-        "e5",
-        "Nf3",
-        "Qf6",
-        "Bc4",
-        "d6",
-        "Nc3"
-    };
-
-    bool white = true;
+    bool white = isWhite(game, username);
 
     // Evaluate every move
     std::vector<EvaluatedMove> evaluatedMoves;
-    evaluateAllMoves(moves, evaluatedMoves);
+    std::vector<Move> bestMoves;
+    evaluateAllMoves(moves, evaluatedMoves, bestMoves, white);
 
     // Load opening book
     std::unordered_set<std::string> book;
@@ -406,15 +495,19 @@ int main()
         window.clear();
         drawBoard(window);
 
+
+        drawSquare(window, bestMoves[moveHistory.size()].from(), sf::Color(135, 245, 150, 150), white);
+        drawSquare(window, bestMoves[moveHistory.size()].to(), sf::Color(135, 245, 150, 150), white);
+
         if(moveHistory.size() > 0) {
-            drawSquare(window, moveHistory.back().from());
-            drawSquare(window, moveHistory.back().to());
+            drawSquare(window, moveHistory.back().from(), sf::Color(245, 245, 130, 150), white);
+            drawSquare(window, moveHistory.back().to(), sf::Color(245, 245, 130, 150), white);
             if(classifiedMoves[moveHistory.size()-1].cl != None) {
-                drawIcon(window, moveHistory.back().to(), classifiedMoves[moveHistory.size()-1].cl, icons);
+                drawIcon(window, moveHistory.back().to(), classifiedMoves[moveHistory.size()-1].cl, icons, white);
             }
         }
 
-        drawPieces(window, board, &piecesTexture);
+        drawPieces(window, board, &piecesTexture, white);
         window.display();
     }
 }
